@@ -33,6 +33,25 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Running PyTorch using {device}")
 
 
+# Eval and compute BLEU
+def eval(model, data_iterator):
+    avg_meters = tx.utils.AverageRecorder()
+
+    for batch in data_iterator:
+        transferred = model.infer(inputs=batch)
+        transferred = model.vocab.map_ids_to_tokens_py(transferred.cpu())
+        original = model.vocab.map_ids_to_tokens_py(batch['text_ids'].cpu())
+
+        bleu = tx.evals.corpus_bleu(original, transferred)
+        avg_meters.add(bleu)
+
+        data_iterator.set_description(f'BLEU: {avg_meters.to_str(precision=4)}')
+        if wandb is not None:
+            wandb.log({'BLEU': avg_meters.avg()})
+
+    return avg_meters.avg()
+
+
 def main():
     parser = argparse.ArgumentParser(description='Model for text style transfer')
     parser.add_argument('--config',
@@ -40,14 +59,10 @@ def main():
                         help='The config to use.')
     parser.add_argument('--dataset',
                         help='The name of the dataset to use.',
-                        required=True)
+                        default='yelp')
     parser.add_argument('--base-path',
                         help='base path for the dataset dir',
-                        default='./personality_transfer_model/data')
-    parser.add_argument('--trait',
-                        help='The traits to use as classification',
-                        choices=['OPN', 'CON', 'EXT', 'AGR', 'NEU'],
-                        required=True)
+                        default='./data')
     parser.add_argument('--offline',
                         help='If true will run wandb offline',
                         action='store_true')
@@ -62,8 +77,8 @@ def main():
 
     if wandb is not None:
         mode = 'offline' if args.offline else 'online'
-        wandb.init(project="personality-transfer",
-                   entity="galatoloa",
+        wandb.init(project="a-project",
+                   entity="a-name",
                    mode=mode,
                    config=config.model,
                    settings=wandb.Settings(start_method='fork'))
@@ -75,32 +90,38 @@ def main():
     os.makedirs(config.checkpoint_path, exist_ok=True)
 
     # Data
-    dataset_config = {
-        'batch_size': config.batch_size,
-        'seed': config.seed,
-        'datasets': [
-            {
-                'files': f'{args.base_path}/{args.dataset}/text',
-                'vocab_file': f'{args.base_path}/{args.dataset}/vocab',
-                'data_name': ''
-            },
-            {
-                'files': f'{args.base_path}/{args.dataset}/labels_{args.trait}',
-                'data_name': 'labels',
-                'data_type': 'int'
-            }
-        ],
-        'name': 'train'
-    }
-    train_data = tx.data.MultiAlignedData(dataset_config,
+    def dataset_config(name):
+        return {
+            'batch_size': config.batch_size,
+            'seed': config.seed,
+            'datasets': [
+                {
+                    'files': f'{args.base_path}/{args.dataset}/sentiment.{name}.text',
+                    'vocab_file': f'{args.base_path}/{args.dataset}/vocab',
+                    'data_name': ''
+                },
+                {
+                    'files': f'{args.base_path}/{args.dataset}/sentiment.{name}.labels',
+                    'data_name': 'labels',
+                    'data_type': 'int'
+                }
+            ],
+            'name': 'train'
+        }
+    train_data = tx.data.MultiAlignedData(dataset_config('train'),
                                           device=device)
+    val_data = tx.data.MultiAlignedData(dataset_config('dev'),
+                                        device=device)
+    test_data = tx.data.MultiAlignedData(dataset_config('test'),
+                                         device=device)
     vocab = train_data.vocab(0)
 
     # Each training batch is used twice: once for updating the generator and
     # once for updating the discriminator. Feedable data iterator is used for
     # such case.
     iterator = tx.data.DataIterator(
-        {'train_g': train_data, 'train_d': train_data})
+        {'train_g': train_data, 'train_d': train_data,
+         'val': val_data, 'test': test_data})
     input_len = iterator.get_iterator('train_d').__next__()['text_ids'].size(1)-1
 
     # Model
@@ -115,7 +136,7 @@ def main():
                                     hparams=model._hparams.opt)
 
     gamma = config.gamma
-    lambda_g = 0.
+    lambda_g = 0
 
     initial_epoch = 1
     if args.load_checkpoint:
@@ -178,8 +199,7 @@ def main():
         # checkpoint for evaluation
         model_state = {'model_state_dict': model.state_dict(),
                        'input_len': input_len,
-                       'dataset': args.dataset,
-                       'version': 3}
+                       'dataset': args.dataset}
         # checkpoint for resuming training
         torch.save({'model_state_dict': model.state_dict(),
                     'optim_d': optim_d.state_dict(),
@@ -192,6 +212,16 @@ def main():
                            os.path.join(config.checkpoint_path, f'ckpt_epoch_{epoch}.pth'))
     torch.save(model_state,
                os.path.join(config.checkpoint_path, 'final_model.pth'))
+
+    # Eval
+    val_iterator = tqdm(iterator.get_iterator('val'),
+                        total=int(len(val_data)/val_data.batch_size))
+    print("Eval BLEU score: ", eval(model, val_iterator))
+
+    # Test
+    test_iterator = tqdm(iterator.get_iterator('test'),
+                         total=int(len(test_data)/test_data.batch_size))
+    print("Eval BLEU score: ", eval(model, test_iterator))
 
 
 if __name__ == '__main__':

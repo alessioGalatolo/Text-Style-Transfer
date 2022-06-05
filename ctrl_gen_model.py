@@ -138,7 +138,7 @@ class CtrlGenModel(nn.Module):
             with torch.no_grad():
                 # Accuracy on soft samples, for training progress monitoring
                 accu_g = tx.evals.accuracy(labels=1 - inputs['labels'],
-                                            preds=soft_preds)
+                                           preds=soft_preds)
 
                 # Accuracy on greedy-decoded samples, for training progress monitoring
                 _, gdy_preds = self.classifier(
@@ -157,17 +157,28 @@ class CtrlGenModel(nn.Module):
         return loss, accu
 
     @torch.no_grad()
-    def infer(self, text_ids, transfer_clas=None):
+    def infer(self, inputs=None, text_ids=None, transfer_clas=None):
+        assert(inputs is not None or text_ids is not None)
+        self.eval()
+        if inputs is None:
+            inputs = {'text_ids': torch.LongTensor(np.array([text_ids])),
+                      'length': torch.LongTensor([len(text_ids)])}
+            clas_preds = self.forward_d(inputs, mode='eval')
+            if transfer_clas is None:
+                transfer_clas = clas_preds
+            else:
+                transfer_clas = torch.LongTensor([1 if transfer_clas == 0 else 0])
+            inputs['labels'] = transfer_clas
+        else:
+            inputs['labels'] = 1 - inputs['labels']
+        output_ids = self.forward_g(inputs, 'eval', self._hparams.gamma, self._hparams.lambda_g)
+
+        return output_ids.sample_id
+
+    @torch.no_grad()
+    def classify(self, text_ids):
         self.eval()
         inputs = {'text_ids': torch.LongTensor(np.array([text_ids])),
                   'length': torch.LongTensor([len(text_ids)])}
         clas_preds = self.forward_d(inputs, mode='eval')
-        inputs['labels'] = clas_preds
-        if transfer_clas is None:
-            transfer_clas = torch.LongTensor([1 if clas_preds.item() == 0 else 0])
-        if clas_preds.item() != transfer_clas:
-            output_ids = self.forward_g(inputs, 'eval', self._hparams.gamma, self._hparams.lambda_g).sample_id[0]
-        else:
-            output_ids = text_ids
-
-        return output_ids
+        return clas_preds.item()
