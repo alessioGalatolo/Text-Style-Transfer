@@ -4,7 +4,7 @@ Replication of the paper [Unsupervised Text Style Transfer using Language Models
 PyTorch port of [Texar/Text Style Transfer](https://github.com/asyml/texar/tree/master/examples/text_style_transfer)
 
 ## Requirements
-Mainly PyTorch, Texar. See requirements.txt
+Mainly PyTorch, Texar. See [requirements.txt](requirements.txt)
 
 ## Usage (replication)
 Download yelp dataset
@@ -34,3 +34,19 @@ original_text = "This is an example text to test text style transfer"
 print(f'Original text: {original_text}')
 print(f'Transferred text: {style_transfer.transfer(original_text)}')
 ```
+
+### Weights & Biases
+If you want to use Weights & Biases remeber to change the entity and project name in the `train.py` file, line 80.
+
+## Results
+| Accuracy (by the `Classifier` part)  | BLEU (with the original sentence) |
+| -------------------------------------| ----------------------------------|
+| 97.56% | 54.12 |
+
+### Samples
+| Input | This implementation | Original implementation |
+| ---- | ---- | ---- |
+| Go to place for client visits with gorgeous views | Go to place for client visits with mushy views | Go to place for client visits with lacking views |
+| There was lots of people but they still managed to provide great service | There was lots of people but they still managed to provide tasteless service | There was lots of people but they still managed to provide careless service |
+| Needless to say, we skipped desert | Needless to say, we delicious desert | Gentle to say, we edgy desert |
+| The first time i was missing an entire sandwich and a side of fries | The first time i was tanya an entire sandwich and a side of fries | The first time i was beautifully an entire sandwich and a side of fries |

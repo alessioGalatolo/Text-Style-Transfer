@@ -170,15 +170,19 @@ class CtrlGenModel(nn.Module):
                 transfer_clas = torch.LongTensor([1 if transfer_clas == 0 else 0])
             inputs['labels'] = transfer_clas
         else:
-            inputs['labels'] = 1 - inputs['labels']
+            inputs = {'text_ids': inputs['text_ids'],
+                      'length': inputs['length'],
+                      'labels': 1-inputs['labels']}
         output_ids = self.forward_g(inputs, 'eval', self._hparams.gamma, self._hparams.lambda_g)
 
         return output_ids.sample_id
 
     @torch.no_grad()
-    def classify(self, text_ids):
+    def classify(self, inputs=None, text_ids=None):
+        assert(inputs is not None or text_ids is not None)
         self.eval()
-        inputs = {'text_ids': torch.LongTensor(np.array([text_ids])),
-                  'length': torch.LongTensor([len(text_ids)])}
+        if inputs is None:
+            inputs = {'text_ids': torch.LongTensor(np.array([text_ids])),
+                      'length': torch.LongTensor([len(text_ids)])}
         clas_preds = self.forward_d(inputs, mode='eval')
-        return clas_preds.item()
+        return clas_preds

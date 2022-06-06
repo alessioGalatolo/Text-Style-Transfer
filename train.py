@@ -21,6 +21,7 @@ import torch
 import math
 import texar.torch as tx
 from tqdm import tqdm
+import numpy as np
 from ctrl_gen_model import CtrlGenModel
 
 try:
@@ -38,16 +39,20 @@ def eval(model, data_iterator):
     avg_meters = tx.utils.AverageRecorder()
 
     for batch in data_iterator:
-        transferred = model.infer(inputs=batch)
-        transferred = model.vocab.map_ids_to_tokens_py(transferred.cpu())
+        transferred = model.infer(inputs=batch).cpu()
+        transferred = model.vocab.map_ids_to_tokens_py(transferred)
         original = model.vocab.map_ids_to_tokens_py(batch['text_ids'].cpu())
+        original = np.expand_dims(original, axis=1)
 
         bleu = tx.evals.corpus_bleu(original, transferred)
-        avg_meters.add(bleu)
 
-        data_iterator.set_description(f'BLEU: {avg_meters.to_str(precision=4)}')
+        preds = model.classify(inputs=batch).cpu()
+        accuracy = tx.evals.accuracy(batch['labels'].cpu(), preds)
+
+        avg_meters.add([accuracy, bleu])
+        data_iterator.set_description(f'BLEU, Acc: {avg_meters.to_str(precision=4)}')
         if wandb is not None:
-            wandb.log({'BLEU': avg_meters.avg()})
+            wandb.log({'BLEU': avg_meters.avg()[0], 'Accuracy': avg_meters.avg()[1]})
 
     return avg_meters.avg()
 
@@ -155,6 +160,7 @@ def main():
     print(f'Starting training from epoch {initial_epoch}')
 
     # Train
+    model_state = None
     for epoch in range(initial_epoch, config.max_nepochs + 1):
         if epoch == config.pretrain_nepochs+1:
             lambda_g = config.lambda_g
@@ -210,8 +216,9 @@ def main():
             if args.save_checkpoints:
                 torch.save(model_state,
                            os.path.join(config.checkpoint_path, f'ckpt_epoch_{epoch}.pth'))
-    torch.save(model_state,
-               os.path.join(config.checkpoint_path, 'final_model.pth'))
+    if model_state is not None:
+        torch.save(model_state,
+                   os.path.join(config.checkpoint_path, 'final_model.pth'))
 
     # Eval
     val_iterator = tqdm(iterator.get_iterator('val'),
