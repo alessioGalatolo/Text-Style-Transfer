@@ -96,12 +96,12 @@ def main():
             'seed': config.seed,
             'datasets': [
                 {
-                    'files': f'{args.base_path}/{args.dataset}/sentiment.{name}.text',
+                    'files': f'{args.base_path}/{args.dataset}/{name}.text',
                     'vocab_file': f'{args.base_path}/{args.dataset}/vocab',
                     'data_name': ''
                 },
                 {
-                    'files': f'{args.base_path}/{args.dataset}/sentiment.{name}.labels',
+                    'files': f'{args.base_path}/{args.dataset}/{name}.labels',
                     'data_name': 'labels',
                     'data_type': 'int'
                 }
@@ -221,7 +221,7 @@ def main():
     # Test
     test_iterator = tqdm(iterator.get_iterator('test'),
                          total=int(len(test_data)/test_data.batch_size))
-    print("Eval BLEU score: ", eval(model, test_iterator))
+    print("Test BLEU score: ", eval(model, test_iterator))
 
 
 if __name__ == '__main__':

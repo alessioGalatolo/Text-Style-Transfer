@@ -16,7 +16,9 @@
 from collections import defaultdict
 from re import findall, sub
 import string
+import os
 import texar.torch as tx
+
 
 translation_table = defaultdict(lambda: ' ', {ord(letter): letter for letter in string.ascii_letters})
 translation_table[ord('.')] = ' . '
@@ -48,6 +50,13 @@ def main():
         path='./',
         filenames='yelp.zip',
         extract=True)
+    os.remove('yelp.zip')
+    os.rename('./data/yelp/sentiment.dev.labels', './data/yelp/dev.labels')
+    os.rename('./data/yelp/sentiment.dev.text', './data/yelp/dev.text')
+    os.rename('./data/yelp/sentiment.test.labels', './data/yelp/test.labels')
+    os.rename('./data/yelp/sentiment.test.text', './data/yelp/test.text')
+    os.rename('./data/yelp/sentiment.train.labels', './data/yelp/train.labels')
+    os.rename('./data/yelp/sentiment.train.text', './data/yelp/train.text')
 
 
 if __name__ == '__main__':
